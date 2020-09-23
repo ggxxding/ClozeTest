@@ -17,3 +17,5 @@ python main.py --output_dir './output' \
 --learning_rate 1e-5 --num_train_epochs 4 
 
 同样，需要修改预训练模型的本地路径，--bert_model参数也可以直接输入bert模型名，会自动下载对应模型，具体见main.py中的说明
+
+在214服务器上已经部署完毕，直接运行微调的代码即可
