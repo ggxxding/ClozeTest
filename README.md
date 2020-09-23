@@ -1,15 +1,12 @@
-### 关于本项目
-本项目基于Bert模型，使用CMU的CLOTH数据集进行微调和测试,最终在large的数据集下达到86%的准确率
+数据集下载：http://www.cs.cmu.edu/~glai1/data/cloth/
 
 数据预处理
 先运行:
-
 python3 data_util.py
-注意：需要修改data_util.py中语料库的本地路径
+注：需要修改data_util.py中207-210行的相关路径
 
 模型微调 
 运行:
-
 python main.py --output_dir './output' \
 --data_dir \
 './data' \
@@ -19,4 +16,4 @@ python main.py --output_dir './output' \
 --output_dir EXP/ \
 --learning_rate 1e-5 --num_train_epochs 4 
 
-同样，需要修改预训练模型的本地路径
+同样，需要修改预训练模型的本地路径，--bert_model参数也可以直接输入bert模型名，会自动下载对应模型，具体见main.py中的说明

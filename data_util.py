@@ -204,10 +204,10 @@ if __name__ == '__main__':
     #'''
     data_collections = ['train', 'valid', 'test']
     for item in data_collections:    
-        args.data_dir = './CLOTH/{}'.format(item)
+        args.data_dir = './CLOTH/{}'.format(item)#替换CLOTH的本地路径
         args.pre = args.post = 0
-        args.bert_model ='./bert-base-uncased-vocab.txt'
-        args.save_name = './data/{}-bert-base-uncased.pt'.format(item)
+        args.bert_model ='./bert-base-uncased-vocab.txt'#bert base版本的词汇表路径
+        args.save_name = './data/{}-bert-base-uncased.pt'.format(item)#预处理数据的输出路径
         data = Preprocessor(args)
     '''
     args.data_dir = './data/'
