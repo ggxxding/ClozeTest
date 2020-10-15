@@ -1038,6 +1038,7 @@ class BertForCloth(PreTrainedBertModel):
 
     def __init__(self, config):
         super(BertForCloth, self).__init__(config)
+        print(config)
         self.bert = BertModel(config)
         self.cls = BertOnlyMLMHead(config, self.bert.embeddings.word_embeddings.weight)
         self.apply(self.init_bert_weights)

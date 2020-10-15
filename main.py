@@ -15,6 +15,7 @@ import torch
 import time
 from pytorch_pretrained_bert.modeling import BertForCloth
 from pytorch_pretrained_bert.optimization import BertAdam
+from transformers import AdamW
 from pytorch_pretrained_bert.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 import functools
 def logging(s, log_path, print_=True, log_=True):
@@ -199,10 +200,12 @@ def main():
     t_total = num_train_steps
     if args.local_rank != -1:
         t_total = t_total // torch.distributed.get_world_size()
-    optimizer = BertAdam(optimizer_grouped_parameters,
+    '''optimizer = BertAdam(optimizer_grouped_parameters,
                          lr=args.learning_rate,
                          warmup=args.warmup_proportion,
-                         t_total=t_total)
+                         t_total=t_total)'''
+    optimizer = AdamW(optimizer_grouped_parameters,
+                         lr=args.learning_rate)
     
     global_step = 0
     if args.do_train:
