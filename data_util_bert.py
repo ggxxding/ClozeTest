@@ -9,6 +9,7 @@ import nltk
 import argparse
 import fnmatch
 import random
+import copy
 
 from transformers.tokenization_bert import BertTokenizer
 
@@ -47,12 +48,16 @@ class ClothSample(object):
         self.article = tokenizer.convert_tokens_to_ids(self.article)
         #print(self.article)
         self.article = torch.Tensor(self.article)
+
         for i in range(len(self.ops)):
             for k in range(4):
                 self.ops[i][k] = tokenizer.convert_tokens_to_ids(self.ops[i][k])
                 self.ops[i][k] = torch.Tensor(self.ops[i][k])
+                #print(self.ops[i][k].size())
         self.ph = torch.Tensor(self.ph)
         self.ans = torch.Tensor(self.ans)
+
+
 
         
 class Preprocessor(object):
@@ -62,6 +67,8 @@ class Preprocessor(object):
         self.data_dir = args.data_dir
         file_list = get_json_file_list(args.data_dir)
         self.data = []
+        self.shortt=0
+        self.longg=0
         #max_article_len = 0
         for file_name in file_list:
             data = json.loads(open(file_name, 'r').read())
@@ -73,28 +80,61 @@ class Preprocessor(object):
         self.data_objs = []
         high_cnt = 0
         middle_cnt = 0
+
         for sample in self.data:
             high_cnt += sample['high']
             middle_cnt += (1 - sample['high'])
             self.data_objs += self._create_sample(sample)
+            #print(self.data_objs[-1].ph)
             #break
         print('high school sample:', high_cnt)
         print('middle school sample:', middle_cnt)
+        print('<512:',self.shortt)
+        print('>512:',self.longg)
         for i in range(len(self.data_objs)):
             self.data_objs[i].convert_tokens_to_ids(self.tokenizer)
             #break
+
         torch.save(self.data_objs, args.save_name)
         
     
     def _create_sample(self, data):
-        cnt = 0
+        cnt = 0 
         #print(data['article'])
+        #tokenize: string -> token list
+        #convert_tokens_to_ids: token list -> id list
         article = self.tokenizer.tokenize(data['article'])
+        #print(article)
+        '''temp_len=0
+        has_mask=0
+        sample_list=[]
+        for p in range(len(article)):
+            if (article[p] == '_'):
+                if (has_mask == 0):
+                    temp_sample = ClothSample()
+                    temp_sample.high = data['high']
+                    has_mask = 1
+                article[p] = '[MASK]'
+                temp_sample.ph.append(p-temp_len)
+                ops = tokenize_ops(data['options'][cnt], self.tokenizer)
+                temp_sample.ops.append(ops)
+                temp_sample.ans.append(ord(data['answers'][cnt]) - ord('A'))
+                cnt += 1
+            elif (has_mask == 1 and (article[p] == '.' or article[p] == '?')):
+                has_mask = 0
+                temp_sample.article = article[temp_len:p+1]
+                sample_list.append(temp_sample)
+                #print(temp_sample.ans)
+                temp_len=p+1
+        return sample_list'''
+
+        #origin
         if (len(article) <= 512):
+            self.shortt+=1
             sample = ClothSample()
             sample.article = article
             sample.high = data['high']
-            for p in range(len(article)):
+            for p in range(len(article)):#p为词指针，ph为[MASK]指针列表
                 if (sample.article[p] == '_'):
                     sample.article[p] = '[MASK]'
                     sample.ph.append(p)
@@ -104,6 +144,7 @@ class Preprocessor(object):
                     cnt += 1
             return [sample]
         else:
+            self.longg+=1
             first_sample = ClothSample()
             second_sample = ClothSample()
             first_sample.high = data['high']
@@ -128,6 +169,259 @@ class Preprocessor(object):
                 return [first_sample]
             else:
                 return [first_sample, second_sample]
+
+        #文章分为前后两部分填空
+        '''if (len(article) <= 512):
+            self.shortt+=1
+            sample = ClothSample()
+            sample.article = article
+            sample.high = data['high']
+            for p in range(len(article)):#p为词指针，ph为[MASK]指针列表
+                if (sample.article[p] == '_'):
+                    sample.article[p] = '[MASK]'
+                    sample.ph.append(p)
+                    ops = tokenize_ops(data['options'][cnt], self.tokenizer)
+                    sample.ops.append(ops)
+                    sample.ans.append(ord(data['answers'][cnt]) - ord('A'))
+                    cnt += 1
+
+            #change [MASK] to answer
+            sample_list = []
+            temp_sample = ClothSample()
+            temp_sample.article = copy.deepcopy(sample.article)
+            temp_sample.high = sample.high
+            temp_sample2 = ClothSample()
+            temp_sample2.article = copy.deepcopy(sample.article)
+            temp_sample2.high = sample.high
+            for ques_ind in range(len(sample.ph)):
+                if (ques_ind < len(sample.ph)/2):
+                    temp_sample.ph.append(sample.ph[ques_ind])
+                    temp_sample.ops.append(sample.ops[ques_ind])
+                    temp_sample.ans.append(sample.ans[ques_ind])
+                    temp_sample2.article[sample.ph[ques_ind]] = sample.ops[ques_ind][sample.ans[ques_ind]][0]
+                if (ques_ind >= len(sample.ph)/2):
+                    temp_sample2.ph.append(sample.ph[ques_ind])
+                    temp_sample2.ops.append(sample.ops[ques_ind])
+                    temp_sample2.ans.append(sample.ans[ques_ind])
+                    temp_sample.article[sample.ph[ques_ind]] = sample.ops[ques_ind][sample.ans[ques_ind]][0]
+            sample_list.append(temp_sample)
+            sample_list.append(temp_sample2)
+            return sample_list
+        else:
+            self.longg+=1
+            first_sample = ClothSample()
+            second_sample = ClothSample()
+            first_sample.high = data['high']
+            second_sample.high = data['high']
+            second_s = len(article) - 512
+            for p in range(len(article)):
+                if (article[p] == '_'):
+                    article[p] = '[MASK]'
+                    ops = tokenize_ops(data['options'][cnt], self.tokenizer)
+                    if (p < 512):
+                        first_sample.ph.append(p)
+                        first_sample.ops.append(ops)
+                        first_sample.ans.append(ord(data['answers'][cnt]) - ord('A'))
+                    else:
+                        second_sample.ph.append(p - second_s)
+                        second_sample.ops.append(ops)
+                        second_sample.ans.append(ord(data['answers'][cnt]) - ord('A'))
+                    cnt += 1
+            first_sample.article = article[:512]
+            second_sample.article = article[-512:]
+
+            sample_list = []
+            temp_first_sample = ClothSample()
+            temp_first_sample.article = copy.deepcopy(first_sample.article)
+            temp_first_sample.high = first_sample.high
+            temp_first_sample2 = ClothSample()
+            temp_first_sample2.article = copy.deepcopy(first_sample.article)
+            temp_first_sample2.high = first_sample.high
+            temp_second_sample = ClothSample()
+            temp_second_sample.article = copy.deepcopy(second_sample.article)
+            temp_second_sample.high = second_sample.high
+            temp_second_sample2 = ClothSample()
+            temp_second_sample2.article = copy.deepcopy(second_sample.article)
+            temp_second_sample2.high = second_sample.high
+            for ques_ind in range(len(first_sample.ph)):
+                if (ques_ind < len(first_sample.ph)/2):
+                    temp_first_sample.ph.append(first_sample.ph[ques_ind])
+                    temp_first_sample.ops.append(first_sample.ops[ques_ind])
+                    temp_first_sample.ans.append(first_sample.ans[ques_ind])
+                    temp_first_sample2.article[first_sample.ph[ques_ind]] = first_sample.ops[ques_ind][first_sample.ans[ques_ind]][0]
+                if (ques_ind >= len(first_sample.ph)/2):
+                    temp_first_sample2.ph.append(first_sample.ph[ques_ind])
+                    temp_first_sample2.ops.append(first_sample.ops[ques_ind])
+                    temp_first_sample2.ans.append(first_sample.ans[ques_ind])
+                    temp_first_sample.article[first_sample.ph[ques_ind]] = first_sample.ops[ques_ind][first_sample.ans[ques_ind]][0]
+            sample_list.append(temp_first_sample)
+            sample_list.append(temp_first_sample2)
+            if (len(second_sample.ans) == 0):
+                return sample_list
+            else:
+                for ques_ind in range(len(second_sample.ans)):
+                    if (ques_ind >= len(second_sample.ph)/2):
+                        temp_second_sample2.ph.append(second_sample.ph[ques_ind])
+                        temp_second_sample2.ops.append(second_sample.ops[ques_ind])
+                        temp_second_sample2.ans.append(second_sample.ans[ques_ind])
+                        temp_second_sample.article[second_sample.ph[ques_ind]] = second_sample.ops[ques_ind][second_sample.ans[ques_ind]][0]
+                    if (ques_ind < len(second_sample.ph)/2):
+                        temp_second_sample.ph.append(second_sample.ph[ques_ind])
+                        temp_second_sample.ops.append(second_sample.ops[ques_ind])
+                        temp_second_sample.ans.append(second_sample.ans[ques_ind])
+                        temp_second_sample2.article[second_sample.ph[ques_ind]] = second_sample.ops[ques_ind][second_sample.ans[ques_ind]][0]
+                sample_list.append(temp_second_sample)
+                #print(temp_second_sample2.article)
+                #print(temp_second_sample2.ops)
+                return sample_list
+
+            if (len(second_sample.ans) == 0):
+                return [first_sample]
+            else:
+                return [first_sample, second_sample]'''
+
+        #部分单词答案由多个token组成，插入时把他们全部插入，会使文章变长，超过512会报错，因此要先进行插入再分段
+        '''if (len(article) <= 512):
+            self.shortt+=1
+            sample = ClothSample()
+            sample.article = article
+            sample.high = data['high']
+
+            for p in range(len(article)):#p为词指针，ph为[MASK]指针列表
+                if (sample.article[p] == '_'):
+                    sample.article[p] = '[MASK]'
+                    sample.ph.append(p)
+                    ops = tokenize_ops(data['options'][cnt], self.tokenizer)
+                    sample.ops.append(ops)
+                    sample.ans.append(ord(data['answers'][cnt]) - ord('A'))
+                    cnt += 1
+
+            #change [MASK] to answer
+            sample_list = []
+            temp_sample = ClothSample()
+            temp_sample.article = copy.deepcopy(sample.article)
+            temp_sample.high = sample.high
+            temp_sample2 = ClothSample()
+            temp_sample2.article = copy.deepcopy(sample.article)
+            temp_sample2.high = sample.high
+            temp_len = 0
+            temp_len2 = 0
+            for ques_ind in range(len(sample.ph)):
+                if (ques_ind %2 ==0):
+
+                    temp_sample.ph.append(sample.ph[ques_ind]+temp_len)
+                    temp_sample.ops.append(sample.ops[ques_ind])
+                    temp_sample.ans.append(sample.ans[ques_ind])
+                    temp_sample2.article[sample.ph[ques_ind]+temp_len2] = sample.ops[ques_ind][sample.ans[ques_ind]][0]
+                    if(len(sample.ops[ques_ind][sample.ans[ques_ind]])>1):
+                        for ind in range(1,len(sample.ops[ques_ind][sample.ans[ques_ind]])):
+                            temp_len2 += 1
+                            temp_sample2.article.insert(sample.ph[ques_ind]+temp_len2,sample.ops[ques_ind][sample.ans[ques_ind]][ind])
+                if (ques_ind %2 ==1):
+                    temp_sample2.ph.append(sample.ph[ques_ind]+temp_len2)
+                    temp_sample2.ops.append(sample.ops[ques_ind])
+                    temp_sample2.ans.append(sample.ans[ques_ind])
+                    temp_sample.article[sample.ph[ques_ind]+temp_len] = sample.ops[ques_ind][sample.ans[ques_ind]][0]
+                    if(len(sample.ops[ques_ind][sample.ans[ques_ind]])>1):
+                        for ind in range(1,len(sample.ops[ques_ind][sample.ans[ques_ind]])):
+                            temp_len += 1
+                            temp_sample.article.insert(sample.ph[ques_ind]+temp_len,sample.ops[ques_ind][sample.ans[ques_ind]][ind])
+            sample_list.append(temp_sample)
+            sample_list.append(temp_sample2)
+            return sample_list
+        else:
+            self.longg+=1
+            first_sample = ClothSample()
+            second_sample = ClothSample()
+            first_sample.high = data['high']
+            second_sample.high = data['high']
+            second_s = len(article) - 512
+            for p in range(len(article)):
+                if (article[p] == '_'):
+                    article[p] = '[MASK]'
+                    ops = tokenize_ops(data['options'][cnt], self.tokenizer)
+                    if (p < 512):
+                        first_sample.ph.append(p)
+                        first_sample.ops.append(ops)
+                        first_sample.ans.append(ord(data['answers'][cnt]) - ord('A'))
+                    else:
+                        second_sample.ph.append(p - second_s)
+                        second_sample.ops.append(ops)
+                        second_sample.ans.append(ord(data['answers'][cnt]) - ord('A'))
+                    cnt += 1
+            first_sample.article = article[:512]
+            second_sample.article = article[-512:]
+
+            sample_list = []
+            temp_first_sample = ClothSample()
+            temp_first_sample.article = copy.deepcopy(first_sample.article)
+            temp_first_sample.high = first_sample.high
+            temp_first_sample2 = ClothSample()
+            temp_first_sample2.article = copy.deepcopy(first_sample.article)
+            temp_first_sample2.high = first_sample.high
+            temp_second_sample = ClothSample()
+            temp_second_sample.article = copy.deepcopy(second_sample.article)
+            temp_second_sample.high = second_sample.high
+            temp_second_sample2 = ClothSample()
+            temp_second_sample2.article = copy.deepcopy(second_sample.article)
+            temp_second_sample2.high = second_sample.high
+            temp_first_len = 0
+            temp_first_len2 = 0
+            temp_second_len = 0
+            temp_second_len2 = 0
+            for ques_ind in range(len(first_sample.ph)):
+                if (ques_ind %2 ==0):
+                    temp_first_sample.ph.append(first_sample.ph[ques_ind]+temp_first_len)
+                    temp_first_sample.ops.append(first_sample.ops[ques_ind])
+                    temp_first_sample.ans.append(first_sample.ans[ques_ind])
+                    temp_first_sample2.article[first_sample.ph[ques_ind]+temp_first_len2] = first_sample.ops[ques_ind][first_sample.ans[ques_ind]][0]
+                    if(len(first_sample.ops[ques_ind][first_sample.ans[ques_ind]])>1):
+                        for ind in range(1,len(first_sample.ops[ques_ind][first_sample.ans[ques_ind]])):
+                            temp_first_len2 += 1
+                            temp_first_sample2.article.insert(first_sample.ph[ques_ind]+temp_first_len2,first_sample.ops[ques_ind][first_sample.ans[ques_ind]][ind])
+                if (ques_ind %2 ==1):
+                    temp_first_sample2.ph.append(first_sample.ph[ques_ind]+temp_first_len2)
+                    temp_first_sample2.ops.append(first_sample.ops[ques_ind])
+                    temp_first_sample2.ans.append(first_sample.ans[ques_ind])
+                    temp_first_sample.article[first_sample.ph[ques_ind]+temp_first_len] = first_sample.ops[ques_ind][first_sample.ans[ques_ind]][0]
+                    if(len(first_sample.ops[ques_ind][first_sample.ans[ques_ind]])>1):
+                        for ind in range(1,len(first_sample.ops[ques_ind][first_sample.ans[ques_ind]])):
+                            temp_first_len += 1
+                            temp_first_sample.article.insert(first_sample.ph[ques_ind]+temp_first_len,first_sample.ops[ques_ind][first_sample.ans[ques_ind]][ind])
+            sample_list.append(temp_first_sample)
+            sample_list.append(temp_first_sample2)
+            if (len(second_sample.ans) == 0):
+                return sample_list
+            else:
+                for ques_ind in range(len(second_sample.ans)):
+                    if (ques_ind %2 == 0):
+                        temp_second_sample.ph.append(second_sample.ph[ques_ind]+temp_second_len)
+                        temp_second_sample.ops.append(second_sample.ops[ques_ind])
+                        temp_second_sample.ans.append(second_sample.ans[ques_ind])
+                        temp_second_sample2.article[second_sample.ph[ques_ind]+temp_second_len2] = second_sample.ops[ques_ind][second_sample.ans[ques_ind]][0]
+                        if(len(second_sample.ops[ques_ind][second_sample.ans[ques_ind]])>1):
+                            for ind in range(1,len(second_sample.ops[ques_ind][second_sample.ans[ques_ind]])):
+                                temp_second_len2 += 1
+                                temp_second_sample2.article.insert(second_sample.ph[ques_ind]+temp_second_len2,second_sample.ops[ques_ind][second_sample.ans[ques_ind]][ind])
+                    if (ques_ind %2 == 1):
+                        temp_second_sample2.ph.append(second_sample.ph[ques_ind]+temp_second_len2)
+                        temp_second_sample2.ops.append(second_sample.ops[ques_ind])
+                        temp_second_sample2.ans.append(second_sample.ans[ques_ind])
+                        temp_second_sample.article[second_sample.ph[ques_ind]+temp_second_len] = second_sample.ops[ques_ind][second_sample.ans[ques_ind]][0]
+                        if(len(second_sample.ops[ques_ind][second_sample.ans[ques_ind]])>1):
+                            for ind in range(1,len(second_sample.ops[ques_ind][second_sample.ans[ques_ind]])):
+                                temp_second_len += 1
+                                print(temp_second_sample.article[second_sample.ph[ques_ind]])
+                                temp_second_sample.article.insert(second_sample.ph[ques_ind]+temp_second_len,second_sample.ops[ques_ind][second_sample.ans[ques_ind]][ind])
+                sample_list.append(temp_second_sample)
+                if(len(temp_second_sample2.ph)>0):
+                    sample_list.append(temp_second_sample2)
+                return sample_list
+
+            if (len(second_sample.ans) == 0):
+                return [first_sample]
+            else:
+                return [first_sample, second_sample]'''
 
 class Loader(object):
     def __init__(self, data_dir, data_file, cache_size, batch_size, device='cpu'):
@@ -208,7 +502,7 @@ if __name__ == '__main__':
                         default='./data',
                         type=str,
                         required=True,
-                        help="albert-base-v1, albert-large-v1, albert-xlarge-v1, albert-xxlarge-v1, or replace v1 with v2")
+                        help=" ")
     args = parser.parse_args()
     #'''
     data_collections = ['train', 'valid', 'test']

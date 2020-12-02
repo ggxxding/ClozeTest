@@ -46,7 +46,7 @@ def main():
                         default='./data',
                         type=str,
                         help="The input data dir. Should contain the .tsv files (or other data files) for the task.")
-    parser.add_argument("--bert_model", default='albert-base-v2', type=str,
+    parser.add_argument("--bert_model", default='bert-base-uncased', type=str,
                         help="Bert pre-trained model selected in the list: bert-base-uncased, "
                              "bert-large-uncased, bert-base-cased, bert-base-multilingual, bert-base-chinese.")
     parser.add_argument("--task_name",
@@ -77,7 +77,7 @@ def main():
                         type=int,
                         help="Total batch size for training.")
     parser.add_argument("--eval_batch_size",
-                        default=8,
+                        default=4,
                         type=int,
                         help="Total batch size for eval.")
     parser.add_argument("--learning_rate",
@@ -226,7 +226,7 @@ def main():
             tr_acc = 0
             nb_tr_examples, nb_tr_steps = 0, 0
             for inp, tgt in train_data.data_iter():
-                loss, acc, _, _ = model(inp, tgt)
+                loss, acc, _, _,_  = model(inp, tgt)
                 if n_gpu > 1:
                     loss = loss.mean() # mean() to average on multi-gpu.
                     acc = acc.sum()
@@ -276,12 +276,15 @@ def main():
         # Run prediction for full data
 
         model.eval()
+        #model.load_state_dict(torch.load("./data/bert-large-uncased-model.pt"))#
+        print('loaded ./data/bert-large-uncased-model.pt')
+
         eval_loss, eval_accuracy, eval_h_acc, eval_m_acc = 0, 0, 0, 0
         nb_eval_steps, nb_eval_examples, nb_eval_h_examples = 0, 0, 0
         for inp, tgt in valid_data.data_iter(shuffle=False):
 
             with torch.no_grad():
-                tmp_eval_loss, tmp_eval_accuracy, tmp_h_acc, tmp_m_acc = model(inp, tgt)
+                tmp_eval_loss, tmp_eval_accuracy, tmp_h_acc, tmp_m_acc, ans = model(inp, tgt)
             if n_gpu > 1:
                 tmp_eval_loss = tmp_eval_loss.mean() # mean() to average on multi-gpu.
                 tmp_eval_accuracy = tmp_eval_accuracy.sum()
@@ -295,6 +298,7 @@ def main():
 
         eval_loss = eval_loss / nb_eval_steps
         eval_accuracy = eval_accuracy / nb_eval_examples
+        print(eval_h_acc,nb_eval_h_examples)
         eval_h_acc = eval_h_acc / nb_eval_h_examples
         eval_m_acc = eval_m_acc / (nb_eval_examples - nb_eval_h_examples)
         result = {'valid_eval_loss': eval_loss,
@@ -317,12 +321,13 @@ def main():
         # Run prediction for full data
 
         model.eval()
+        #model.load_state_dict(torch.load("./data/bert-large-uncased-model.pt"))#
         eval_loss, eval_accuracy, eval_h_acc, eval_m_acc = 0, 0, 0, 0
         nb_eval_steps, nb_eval_examples, nb_eval_h_examples = 0, 0, 0
         for inp, tgt in test_data.data_iter(shuffle=False):
 
             with torch.no_grad():
-                tmp_eval_loss, tmp_eval_accuracy, tmp_h_acc, tmp_m_acc = model(inp, tgt)
+                tmp_eval_loss, tmp_eval_accuracy, tmp_h_acc, tmp_m_acc,ans = model(inp, tgt)
             if n_gpu > 1:
                 tmp_eval_loss = tmp_eval_loss.mean() # mean() to average on multi-gpu.
                 tmp_eval_accuracy = tmp_eval_accuracy.sum()
