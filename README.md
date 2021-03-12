@@ -1,3 +1,5 @@
+pytorch1.6
+
 数据集下载：http://www.cs.cmu.edu/~glai1/data/cloth/
 
 数据预处理
