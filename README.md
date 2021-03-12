@@ -2,12 +2,12 @@
 
 数据预处理
 先运行:
-python3 data_util.py
+python3 data_util(_bert).py
 注：需要修改data_util.py中207-210行的相关路径
 
 模型微调 
 运行:
-python main.py --output_dir './output' \
+python main(_bert).py --output_dir './output' \
 --data_dir \
 './data' \
 --bert_model \
