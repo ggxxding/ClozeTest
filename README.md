@@ -1,4 +1,4 @@
-pytorch1.6
+pytorch1.6 python 3.6.10
 
 数据集下载：http://www.cs.cmu.edu/~glai1/data/cloth/
 
