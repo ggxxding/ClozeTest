@@ -25,7 +25,6 @@ def tokenize_ops(ops, tokenizer):
     for i in range(4):
         ret.append(tokenizer.tokenize(ops[i]))
     return ret
-
 def to_device(L, device):
     if (type(L) != list):
         return L.to(device)

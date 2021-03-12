@@ -13,10 +13,12 @@ from data_util_bert import ClothSample
 import numpy as np
 import torch
 import time
+import json
 from pytorch_pretrained_bert.optimization import BertAdam
 from transformers.modeling_bert import BertForCloth
 from transformers import AdamW
 from transformers import PYTORCH_PRETRAINED_BERT_CACHE
+from transformers.tokenization_bert import BertTokenizer
 import functools
 
 
@@ -226,7 +228,7 @@ def main():
             tr_acc = 0
             nb_tr_examples, nb_tr_steps = 0, 0
             for inp, tgt in train_data.data_iter():
-                loss, acc, _, _,_  = model(inp, tgt)
+                loss, acc, _, _,_,_  = model(inp, tgt)
                 if n_gpu > 1:
                     loss = loss.mean() # mean() to average on multi-gpu.
                     acc = acc.sum()
@@ -270,6 +272,8 @@ def main():
         torch.save(model.state_dict(), './data/'+args.bert_model+'-model.pt')
         print('saved as ./data/'+args.bert_model+'-model.pt')
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
+        model.load_state_dict(torch.load("../Cloze_Test/data/"+args.bert_model+"-model.pt"))#
+        print('loaded ../Cloze_Test/data/'+args.bert_model+'-model.pt')
         logging("***** Running evaluation *****")
         logging("  Batch size = {}".format(args.eval_batch_size))
         valid_data = data_util_bert.Loader(args.data_dir, data_file['valid'], args.cache_size, args.eval_batch_size, device)
@@ -281,10 +285,11 @@ def main():
 
         eval_loss, eval_accuracy, eval_h_acc, eval_m_acc = 0, 0, 0, 0
         nb_eval_steps, nb_eval_examples, nb_eval_h_examples = 0, 0, 0
-        for inp, tgt in valid_data.data_iter(shuffle=False):
 
+        for inp, tgt in valid_data.data_iter(shuffle=False):
             with torch.no_grad():
-                tmp_eval_loss, tmp_eval_accuracy, tmp_h_acc, tmp_m_acc, ans = model(inp, tgt)
+                tmp_eval_loss, tmp_eval_accuracy, tmp_h_acc, tmp_m_acc, ans,inf = model(inp, tgt)
+
             if n_gpu > 1:
                 tmp_eval_loss = tmp_eval_loss.mean() # mean() to average on multi-gpu.
                 tmp_eval_accuracy = tmp_eval_accuracy.sum()
@@ -315,6 +320,8 @@ def main():
                 writer.write("%s = %s\n" % (key, str(result[key])))
                 
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
+        model.load_state_dict(torch.load("../Cloze_Test/data/"+args.bert_model+"-model.pt"))#
+        print('loaded ../Cloze_Test/data/'+args.bert_model+'-model.pt')
         test_data = data_util_bert.Loader(args.data_dir, data_file['test'], args.cache_size, args.eval_batch_size, device)
         logging("***** Running test evaluation *****")
         logging("  Batch size = {}".format(args.eval_batch_size))
@@ -324,10 +331,57 @@ def main():
         #model.load_state_dict(torch.load("./data/bert-large-uncased-model.pt"))#
         eval_loss, eval_accuracy, eval_h_acc, eval_m_acc = 0, 0, 0, 0
         nb_eval_steps, nb_eval_examples, nb_eval_h_examples = 0, 0, 0
+
+        tokenizer = BertTokenizer.from_pretrained(args.bert_model)
+
+        filecount = 0
         for inp, tgt in test_data.data_iter(shuffle=False):
 
+            outputJson={}
             with torch.no_grad():
-                tmp_eval_loss, tmp_eval_accuracy, tmp_h_acc, tmp_m_acc,ans = model(inp, tgt)
+                tmp_eval_loss, tmp_eval_accuracy, tmp_h_acc, tmp_m_acc,ans,inf = model(inp, tgt)
+            #读取错误预测信息输出json，上一行ans后添加inf，取消以下注释即可,eval_batch_size需要设为1
+            if(inf!={}):
+                outputJson["article"] = tokenizer.convert_tokens_to_string(tokenizer.convert_ids_to_tokens(inf['article']))
+                tempList=[]
+                for i in range(inf['option'].size(0)):
+                    tempList.append([])
+                    for j in range(inf['option'].size(1)):
+                        a = tokenizer.convert_ids_to_tokens(inf['option'][i][j])
+                        a = tokenizer.convert_tokens_to_string(a)
+                        tempList[-1].append(a)
+                tempList = np.array(tempList)
+                tempOut = np.array(inf['tempOut'].cpu()).tolist()
+                #n*4*token -> n*4
+                proList=[]
+                for i in range(len(tempOut)):
+                    proList.append([])
+                    for j in range(len(tempOut[i])):
+                        for k in range(len(tempOut[i][j])):
+                            tempOut[i][j][k]=str(round(tempOut[i][j][k],2))
+                        proList[-1].append(' '.join(tempOut[i][j]))
+                proList = np.array(proList,dtype=object)
+
+
+
+                num2char = {'0':'A','1':'B','2':'C','3':'D'}
+                Out = np.array(inf['out'].cpu(),dtype=str)
+                for i in range(Out.shape[0]):
+                    Out[i] = num2char[Out[i]]
+                Out = Out.reshape((-1,1))
+                Tgt = np.array(inf['tgt'].cpu(),dtype = str)
+                for i in range(Tgt.shape[0]):
+                    Tgt[i] = num2char[Tgt[i]]
+                Tgt = Tgt.reshape((-1,1))
+                outputJson['falseList'] = inf['falseList']
+                outputJson['option'] = np.concatenate((tempList,proList,Out,Tgt), axis = 1).tolist()
+                outputJson['high'] = np.array(inf['high'].cpu(),dtype=int).tolist()
+                json_str = json.dumps(outputJson, indent=4)
+                with open('./data/cloze'+str(filecount)+'.json', 'w') as json_file:
+                    json_file.write(json_str)
+                filecount += 1
+            print("filecount avg: ",filecount)
+
             if n_gpu > 1:
                 tmp_eval_loss = tmp_eval_loss.mean() # mean() to average on multi-gpu.
                 tmp_eval_accuracy = tmp_eval_accuracy.sum()

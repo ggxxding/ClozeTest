@@ -11,10 +11,11 @@ python main.py --output_dir './output' \
 --data_dir \
 './data' \
 --bert_model \
-./uncased_base/bert-base-uncased.tar.gz \
+'bert-base-uncased' \
 --do_eval --do_train --train_batch_size 4 \
---output_dir EXP/ \
+--output_dir ./output \
 --learning_rate 1e-5 --num_train_epochs 4 
+
 
 同样，需要修改预训练模型的本地路径，--bert_model参数也可以直接输入bert模型名，会自动下载对应模型，具体见main.py中的说明
 
@@ -22,3 +23,7 @@ python main.py --output_dir './output' \
 
 2020/10/15更新：
 用albert、electra、roberta等模型进行cloth实验（结果都没有bert好），运行对应的data_util_model和main_model文件即可，相关参数均有说明。
+
+2021/2/3:
+
+analyse.py分析avg模型因为token length导致的错题和其中因为我们的改进而纠正的比率
